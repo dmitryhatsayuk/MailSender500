@@ -1,6 +1,5 @@
 package tools.mail.app.service;
 
-import jakarta.mail.BodyPart;
 import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.internet.MimeMultipart;
@@ -28,26 +27,43 @@ public class EmailTemplateService {
         try (FileInputStream fis = new FileInputStream(file)) {
             MimeMessage message = new MimeMessage(session, fis);
 
-            // 1. Декодируем тему письма (убирает кракозябры из заголовков)
+            // Получаем "сырую" тему письма
             String rawSubject = message.getSubject();
+
             if (rawSubject != null) {
-                this.subject = MimeUtility.decodeText(rawSubject);
+                // Пытаемся исправить кодировку:
+                // Переводим из ISO-8859-1 (как её ошибочно видит Java) обратно в байты
+                // и интерпретируем как UTF-8.
+                try {
+                    String decoded = new String(rawSubject.getBytes("ISO-8859-1"), "UTF-8");
+
+                    // Если в строке все еще есть маркеры кодировки почты (например, =?UTF-8?),
+                    // прогоняем через стандартный декодер
+                    if (decoded.contains("=?")) {
+                        this.subject = MimeUtility.decodeText(decoded);
+                    } else {
+                        this.subject = decoded;
+                    }
+                } catch (Exception e) {
+                    // Если ручной метод упал, используем стандартный декодер как запасной вариант
+                    this.subject = MimeUtility.decodeText(rawSubject);
+                }
             } else {
                 this.subject = "Без темы";
             }
 
-            // 2. Извлекаем HTML содержимое с учетом кодировки
+            // Извлекаем тело письма (HTML)
             this.htmlContent = getTextFromMessage(message);
         }
     }
 
     private String getTextFromMessage(jakarta.mail.Part p) throws Exception {
-        // Если это чистый HTML
+        // Если нашли HTML часть
         if (p.isMimeType("text/html")) {
             return (String) p.getContent();
         }
 
-        // Если письмо составное (с вложениями или картинками)
+        // Если письмо составное (multipart), ищем рекурсивно внутри частей
         if (p.isMimeType("multipart/*")) {
             MimeMultipart mp = (MimeMultipart) p.getContent();
             for (int i = 0; i < mp.getCount(); i++) {
@@ -56,7 +72,7 @@ public class EmailTemplateService {
             }
         }
 
-        // Если это текстовое письмо, но мы ищем HTML
+        // Обработка вложенных сообщений
         if (p.isMimeType("message/rfc822")) {
             return getTextFromMessage((jakarta.mail.Part) p.getContent());
         }
