@@ -8,11 +8,11 @@ import java.util.List;
 
 public interface RecipientRepository extends JpaRepository<Recipient, Long> {
 
-    // Найти следующее письмо для отправки
-    Recipient findFirstByStatusOrderByIdAsc(String status);
+    // ДОБАВЬ ЭТУ СТРОКУ (исправляет твою ошибку):
+    Recipient findByEmailIgnoreCase(String email);
 
-    // Посчитать, сколько отправили за сегодня (для лимита в 500)
+    @Query("SELECT r FROM Recipient r WHERE UPPER(r.status) = 'PENDING' ORDER BY r.id ASC")
+    List<Recipient> findNextToProcess();
+
     long countByStatusAndSentAtAfter(String status, LocalDateTime date);
-
-    List<Recipient> findAllByStatus(String status);
 }
